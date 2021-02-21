@@ -1,0 +1,66 @@
+﻿/* 
+ * Copyright (C) 2014 Mehdi El Gueddari
+ * http://mehdi.me
+ *
+ * This software may be modified and distributed under the terms
+ * of the MIT license.  See the LICENSE file for details.
+ */
+
+namespace EntityFrameworkCore.DbContextScope
+{
+    /// <summary>
+    ///     Indicates whether or not a new DbContextScope will join the ambient scope.
+    /// </summary>
+    public enum DbContextScopeOption
+    {
+        /// <summary>
+        ///     Join the ambient DbContextScope if one exists. Creates a new
+        ///     one otherwise.
+        ///     This is what you want in most cases. Joining the existing ambient scope
+        ///     ensures that all code within a business transaction uses the same DbContext
+        ///     instance and that all changes made by service methods called within that
+        ///     business transaction are either committed or rolled back atomically when the top-level
+        ///     scope completes (i.e. it ensures that there are no partial commits).
+        /// </summary>
+        JoinExisting,
+
+        /// <summary>
+        ///     Ignore the ambient DbContextScope (if any) and force the creation of
+        ///     a new DbContextScope.
+        ///     This is an advanced feature that should be used with great care.
+        ///     When forcing the creation of a new scope, new DbContext instances will be
+        ///     created within that inner scope instead of re-using the DbContext instances that
+        ///     the parent scope (if any) is using.
+        ///     Any changes made to entities within that inner scope will therefore get persisted
+        ///     to the database when SaveChanges() is called in the inner scope regardless of whether
+        ///     or not the parent scope is successful.
+        ///     You would typically do this to ensure that the changes made within the inner scope
+        ///     are always persisted regardless of the outcome of the overall business transaction
+        ///     (e.g. to persist the results of an operation, such as a remote API call, that
+        ///     cannot be rolled back or to persist audit or log entries that must not be rolled back
+        ///     regardless of the outcome of the business transaction).
+        /// </summary>
+        ForceCreateNew,
+
+        /// <summary>
+        ///     We're hiding the ambient scope but not removing its instance
+        ///     altogether. This is to be tolerant to some programming errors.
+        ///     Suppose we removed the ambient scope instance here. If someone
+        ///     was to start a parallel task without suppressing
+        ///     the ambient context and then tried to suppress the ambient
+        ///     context within the parallel task while the original flow
+        ///     of execution was still ongoing (a strange thing to do, I know,
+        ///     but I'm sure this is going to happen), we would end up
+        ///     removing the ambient context instance of the original flow
+        ///     of execution from within the parallel flow of execution!
+        ///     As a result, any code in the original flow of execution
+        ///     that would attempt to access the ambient scope would end up
+        ///     with a null value since we removed the instance.
+        ///     It would be a fairly nasty bug to track down. So don't let
+        ///     that happen. Hiding the ambient scope (i.e. clearing the CallContext
+        ///     in our execution flow but leaving the ambient scope instance untouched)
+        ///     is safe.
+        /// </summary>
+        Suppress
+    }
+}
