@@ -13,16 +13,16 @@ namespace EntityFrameworkCore.DbContextScope
 {
     public class DbContextScopeFactory : IDbContextScopeFactory
     {
-        private readonly IDbContextFactory _dbContextFactory;
+        private readonly IDbContextFactory? _dbContextFactory;
 
-        public DbContextScopeFactory(IDbContextFactory dbContextFactory = null)
+        public DbContextScopeFactory(IDbContextFactory? dbContextFactory = null)
         {
             _dbContextFactory = dbContextFactory;
         }
 
-        public IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting)
+        public IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting, bool readOnly = false)
         {
-            return new DbContextScope(joiningOption, false, null, _dbContextFactory);
+            return new DbContextScope(joiningOption, readOnly, null, _dbContextFactory);
         }
 
         public IDbContextScope CreateWithTransaction(IsolationLevel isolationLevel)
@@ -30,7 +30,7 @@ namespace EntityFrameworkCore.DbContextScope
             return new DbContextScope(DbContextScopeOption.ForceCreateNew, false, isolationLevel, _dbContextFactory);
         }
 
-        public IDisposable SuppressAmbientContext()
+        public IDisposable HideContext()
         {
             return new DbContextScope(DbContextScopeOption.Suppress);
         }

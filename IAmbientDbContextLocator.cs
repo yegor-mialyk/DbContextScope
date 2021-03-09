@@ -20,6 +20,6 @@ namespace EntityFrameworkCore.DbContextScope
         ///     the ambient DbContext instance for the provided DbContext type.
         ///     Otherwise returns null.
         /// </summary>
-        TDbContext Get<TDbContext>() where TDbContext : DbContext;
+        TDbContext? Get<TDbContext>() where TDbContext : DbContext;
     }
 }

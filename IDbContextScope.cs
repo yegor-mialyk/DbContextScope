@@ -25,7 +25,7 @@ namespace EntityFrameworkCore.DbContextScope
     ///     And just like TransactionScope, it does not support parallel execution flows.
     ///     You therefore MUST suppress the ambient DbContextScope before kicking off parallel
     ///     tasks or you will end up with multiple threads attempting to use the same DbContext
-    ///     instances (use IDbContextScopeFactory.SuppressAmbientContext() for this).
+    ///     instances (use IDbContextScopeFactory.HideContext() for this).
     ///     You can access the DbContext instances that this scopes manages via either:
     ///     - its DbContexts property, or
     ///     - an IAmbientDbContextLocator
@@ -40,12 +40,6 @@ namespace EntityFrameworkCore.DbContextScope
         ///     This method can only be called once per scope.
         /// </summary>
         int SaveChanges();
-
-        /// <summary>
-        ///     Saves the changes in all the DbContext instances that were created within this scope.
-        ///     This method can only be called once per scope.
-        /// </summary>
-        Task<int> SaveChangesAsync();
 
         /// <summary>
         ///     Saves the changes in all the DbContext instances that were created within this scope.

@@ -30,7 +30,7 @@ namespace EntityFrameworkCore.DbContextScope
     /// </summary>
     public class DbContextCollection
     {
-        private readonly IDbContextFactory _dbContextFactory;
+        private readonly IDbContextFactory? _dbContextFactory;
         private readonly IsolationLevel? _isolationLevel;
         private readonly bool _readOnly;
         private readonly Dictionary<DbContext, IDbContextTransaction> _transactions;
@@ -38,7 +38,7 @@ namespace EntityFrameworkCore.DbContextScope
         private bool _disposed;
 
         public DbContextCollection(bool readOnly = false, IsolationLevel? isolationLevel = null,
-            IDbContextFactory dbContextFactory = null)
+            IDbContextFactory? dbContextFactory = null)
         {
             InitializedDbContexts = new Dictionary<Type, DbContext>();
             _transactions = new Dictionary<DbContext, IDbContextTransaction>();
@@ -58,7 +58,7 @@ namespace EntityFrameworkCore.DbContextScope
             var requestedType = typeof(TDbContext);
 
             if (InitializedDbContexts.ContainsKey(requestedType))
-                return InitializedDbContexts[requestedType] as TDbContext;
+                return (TDbContext)InitializedDbContexts[requestedType];
 
             var dbContext = _dbContextFactory != null
                 ? _dbContextFactory.Create<TDbContext>()
@@ -101,7 +101,7 @@ namespace EntityFrameworkCore.DbContextScope
             // contain uncommitted changes here. We should therefore never be in a situation where the below
             // would result in a partial commit.
 
-            ExceptionDispatchInfo lastError = null;
+            ExceptionDispatchInfo? lastError = null;
 
             var changeCount = 0;
 
@@ -139,7 +139,7 @@ namespace EntityFrameworkCore.DbContextScope
                 throw new InvalidOperationException(
                     "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
 
-            ExceptionDispatchInfo lastError = null;
+            ExceptionDispatchInfo? lastError = null;
 
             var c = 0;
 
@@ -176,7 +176,7 @@ namespace EntityFrameworkCore.DbContextScope
                 throw new InvalidOperationException(
                     "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
 
-            ExceptionDispatchInfo lastError = null;
+            ExceptionDispatchInfo? lastError = null;
 
             foreach (var dbContext in InitializedDbContexts.Values)
             {

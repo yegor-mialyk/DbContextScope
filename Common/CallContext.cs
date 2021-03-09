@@ -8,14 +8,14 @@ namespace EntityFrameworkCore.DbContextScope.Common
     /// </summary>
     internal static class CallContext
     {
-        private static readonly ConcurrentDictionary<string, AsyncLocal<object>> context = new();
+        private static readonly ConcurrentDictionary<string, AsyncLocal<object?>> context = new();
 
-        public static void SetData(string name, object data)
+        public static void SetData(string name, object? data)
         {
-            context.GetOrAdd(name, _ => new AsyncLocal<object>()).Value = data;
+            context.GetOrAdd(name, _ => new AsyncLocal<object?>()).Value = data;
         }
 
-        public static object GetData(string name)
+        public static object? GetData(string name)
         {
             return context.TryGetValue(name, out var data) ? data.Value : null;
         }

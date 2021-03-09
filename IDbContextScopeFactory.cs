@@ -27,7 +27,7 @@ namespace EntityFrameworkCore.DbContextScope
         ///     is an advanced feature that should be used with great care and only if you fully understand the
         ///     implications of doing this.
         /// </summary>
-        IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
+        IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting, bool readOnly = false);
 
         /// <summary>
         ///     Forces the creation of a new ambient DbContextScope (i.e. does not
@@ -52,6 +52,6 @@ namespace EntityFrameworkCore.DbContextScope
         ///     would result in multiple threads accessing the same DbContext instances at the same
         ///     time.
         /// </summary>
-        IDisposable SuppressAmbientContext();
+        IDisposable HideContext();
     }
 }

@@ -21,15 +21,15 @@ namespace EntityFrameworkCore.DbContextScope
         private bool _completed;
         private bool _disposed;
         private readonly bool _nested;
-        private readonly DbContextScope _parentScope;
+        private readonly DbContextScope? _parentScope;
         private readonly DbContextScopeOption _joiningOption;
         private readonly bool _readOnly;
 
         public DbContextScope(DbContextScopeOption joiningOption, bool readOnly = false, IsolationLevel? isolationLevel = null,
-            IDbContextFactory dbContextFactory = null)
+            IDbContextFactory? dbContextFactory = null)
         {
-            if (isolationLevel.HasValue && joiningOption == DbContextScopeOption.JoinExisting)
-                throw new ArgumentException("Cannot join an ambient DbContextScope when an isolation level provided.", nameof(joiningOption));
+            if (isolationLevel.HasValue)
+                joiningOption = DbContextScopeOption.ForceCreateNew;
 
             _joiningOption = joiningOption;
             _readOnly = readOnly;
@@ -57,7 +57,7 @@ namespace EntityFrameworkCore.DbContextScope
             SetAmbientScope(this);
         }
 
-        public DbContextCollection DbContexts { get; }
+        public DbContextCollection? DbContexts { get; }
 
         public int SaveChanges()
         {
@@ -76,11 +76,6 @@ namespace EntityFrameworkCore.DbContextScope
             _completed = true;
 
             return c;
-        }
-
-        public Task<int> SaveChangesAsync()
-        {
-            return SaveChangesAsync(CancellationToken.None);
         }
 
         public async Task<int> SaveChangesAsync(CancellationToken cancelToken)
@@ -106,9 +101,10 @@ namespace EntityFrameworkCore.DbContextScope
             if (_disposed)
                 return;
 
-            if (_joiningOption == DbContextScopeOption.Suppress && _parentScope != null)
+            if (_joiningOption == DbContextScopeOption.Suppress)
             {
-                SetAmbientScope(_parentScope);
+                if (_parentScope != null)
+                    SetAmbientScope(_parentScope);
 
                 _disposed = true;
 
@@ -140,7 +136,7 @@ namespace EntityFrameworkCore.DbContextScope
                     _completed = true;
                 }
 
-                DbContexts.Dispose();
+                DbContexts?.Dispose();
             }
 
             // Pop ourselves from the ambient scope stack
@@ -197,7 +193,7 @@ within the context of a DbContextScope without suppressing the ambient context f
 In order to fix this:
 1) Look at the stack trace below - this is the stack trace of the parallel task in question.
 2) Find out where this parallel task was created.
-3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.SuppressAmbientContext() (wrap the parallel task creation code block in this). 
+3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.HideContext() (wrap the parallel task creation code block in this). 
 
 Stack Trace:{Environment.StackTrace}");
                 }
@@ -210,17 +206,17 @@ Stack Trace:{Environment.StackTrace}");
 
         private int CommitInternal()
         {
-            return DbContexts.Commit();
+            return DbContexts!.Commit();
         }
 
         private Task<int> CommitInternalAsync(CancellationToken cancelToken)
         {
-            return DbContexts.CommitAsync(cancelToken);
+            return DbContexts!.CommitAsync(cancelToken);
         }
 
         private void RollbackInternal()
         {
-            DbContexts.Rollback();
+            DbContexts!.Rollback();
         }
 
         /*
@@ -343,7 +339,7 @@ Stack Trace:{Environment.StackTrace}");
         /// <summary>
         ///     Get the current ambient scope or null if no ambient scope has been setup.
         /// </summary>
-        internal static DbContextScope GetAmbientScope()
+        internal static DbContextScope? GetAmbientScope()
         {
             // Retrieve the identifier of the ambient scope (if any)
             var instanceIdentifier = CallContext.GetData(ambientDbContextScopeKey);
@@ -355,7 +351,8 @@ Stack Trace:{Environment.StackTrace}");
             if (dbContextScopeInstances.TryGetValue(instanceIdentifier, out var ambientScope))
                 return ambientScope;
 
-            throw new InvalidOperationException("No ambient DbContextScope found. The method was called outside of the DbContextScope scope.");
+            throw new InvalidOperationException("Found a reference to an ambient DbContextScope in the CallContext " +
+                                                "but no instance in the dbContextScopeInstances table.");
         }
     }
 }
