@@ -22,12 +22,12 @@ namespace EntityFrameworkCore.DbContextScope
 
         public IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting, bool readOnly = false)
         {
-            return new DbContextScope(joiningOption, readOnly, null, _dbContextFactory);
+            return new DbContextScope(joiningOption, readOnly, IsolationLevel.Unspecified, _dbContextFactory);
         }
 
-        public IDbContextScope CreateWithTransaction(IsolationLevel isolationLevel)
+        public IDbContextScope Create(IsolationLevel isolationLevel)
         {
-            return new DbContextScope(DbContextScopeOption.ForceCreateNew, false, isolationLevel, _dbContextFactory);
+            return new DbContextScope(DbContextScopeOption.CreateNew, false, isolationLevel, _dbContextFactory);
         }
 
         public IDisposable HideContext()
