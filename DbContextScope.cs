@@ -143,8 +143,7 @@ namespace EntityFrameworkCore.DbContextScope
             if (_parentScope != null)
             {
                 if (_parentScope._disposed)
-                {
-                    /*
+                /*
                      * If our parent scope has been disposed before us, it can only mean one thing:
                      * someone started a parallel flow of execution and forgot to suppress the
                      * ambient context before doing so. And we've been created in that parallel flow.
@@ -190,7 +189,6 @@ In order to fix this:
 3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.HideContext() (wrap the parallel task creation code block in this).
 
 {Environment.StackTrace}");
-                }
 
                 SetAmbientScope(_parentScope);
             }
