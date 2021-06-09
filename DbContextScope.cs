@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace EntityFrameworkCore.DbContextScope
 {
-    public class DbContextScope : IDbContextScope
+    public sealed class DbContextScope : IDbContextScope
     {
         private bool _completed;
         private bool _disposed;
@@ -57,7 +57,7 @@ namespace EntityFrameworkCore.DbContextScope
             SetAmbientScope(this);
         }
 
-        public DbContextCollection DbContexts { get; } = null!;
+        public DbContextCollection DbContexts { get; } = default!;
 
         public int SaveChanges()
         {
@@ -71,7 +71,7 @@ namespace EntityFrameworkCore.DbContextScope
             // decide when the changes should be saved.
             var c = 0;
             if (!_nested)
-                c = DbContexts!.Commit();
+                c = DbContexts.Commit();
 
             _completed = true;
 
@@ -88,7 +88,7 @@ namespace EntityFrameworkCore.DbContextScope
 
             var c = 0;
             if (!_nested)
-                c = await DbContexts!.CommitAsync(cancelToken).ConfigureAwait(false);
+                c = await DbContexts.CommitAsync(cancelToken).ConfigureAwait(false);
 
             _completed = true;
             return c;
