@@ -1,4 +1,4 @@
-﻿/* 
+﻿/*
  * Copyright (C) 2014 Mehdi El Gueddari
  * http://mehdi.me
  *
@@ -13,8 +13,12 @@ namespace EntityFrameworkCore.DbContextScope
 {
     public interface IDbContextScopeFactory
     {
-        IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting, bool readOnly = false);
+        IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
+
+        IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
+
         IDbContextScope Create(IsolationLevel isolationLevel);
+
         IDisposable HideContext();
     }
 }

@@ -42,17 +42,14 @@ namespace EntityFrameworkCore.DbContextScope
                 return;
             }
 
-            if (_parentScope != null && joiningOption == DbContextScopeOption.JoinExisting)
+            if (_parentScope != null && joiningOption == DbContextScopeOption.JoinExisting &&
+                (!_parentScope._readOnly || _readOnly))
             {
-                if (_parentScope._readOnly && !_readOnly)
-                    throw new InvalidOperationException(
-                        "Cannot nest a read/write DbContextScope within a read-only DbContextScope.");
-
                 _nested = true;
                 DbContexts = _parentScope.DbContexts;
             }
             else
-                DbContexts = new DbContextCollection(_readOnly, isolationLevel, dbContextFactory);
+                DbContexts = new(_readOnly, isolationLevel, dbContextFactory);
 
             SetAmbientScope(this);
         }

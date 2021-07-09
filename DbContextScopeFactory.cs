@@ -20,9 +20,14 @@ namespace EntityFrameworkCore.DbContextScope
             _dbContextFactory = dbContextFactory;
         }
 
-        public IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting, bool readOnly = false)
+        public IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting)
         {
-            return new DbContextScope(joiningOption, readOnly, IsolationLevel.Unspecified, _dbContextFactory);
+            return new DbContextScope(joiningOption, false, IsolationLevel.Unspecified, _dbContextFactory);
+        }
+
+        public IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting)
+        {
+            return new DbContextScope(joiningOption, true, IsolationLevel.Unspecified, _dbContextFactory);
         }
 
         public IDbContextScope Create(IsolationLevel isolationLevel)
