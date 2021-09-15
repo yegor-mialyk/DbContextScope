@@ -8,10 +8,10 @@
 
 using System;
 using System.Data;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace EntityFrameworkCore.DbContextScope
 {
@@ -21,16 +21,18 @@ namespace EntityFrameworkCore.DbContextScope
         private bool _disposed;
         private readonly bool _nested;
         private readonly DbContextScope? _parentScope;
+        private readonly ILogger<DbContextScope> _logger;
         private readonly DbContextScopeOption _joiningOption;
         private readonly bool _readOnly;
 
-        public DbContextScope(DbContextScopeOption joiningOption, bool readOnly = false,
+        public DbContextScope(ILogger<DbContextScope> logger, DbContextScopeOption joiningOption, bool readOnly = false,
             IsolationLevel isolationLevel = IsolationLevel.Unspecified,
             IDbContextFactory? dbContextFactory = null)
         {
             if (isolationLevel != IsolationLevel.Unspecified)
                 joiningOption = DbContextScopeOption.CreateNew;
 
+            _logger = logger;
             _joiningOption = joiningOption;
             _readOnly = readOnly;
 
@@ -38,18 +40,29 @@ namespace EntityFrameworkCore.DbContextScope
 
             if (joiningOption == DbContextScopeOption.Suppress)
             {
-                ambientDbContextScopeIdentifier.Value = null;
+#if DEBUG
+                _logger.LogDebug("Start suppressing an ambient DbContext scope");
+#endif
+                ambientDbContextScopeIdHolder.Value = null;
                 return;
             }
 
             if (_parentScope != null && joiningOption == DbContextScopeOption.JoinExisting &&
                 (!_parentScope._readOnly || _readOnly))
             {
+#if DEBUG
+                _logger.LogDebug("Join existing DbContext scope");
+#endif
                 _nested = true;
                 DbContexts = _parentScope.DbContexts;
             }
             else
+            {
+#if DEBUG
+                _logger.LogDebug("Start new DbContext scope");
+#endif
                 DbContexts = new(_readOnly, isolationLevel, dbContextFactory);
+            }
 
             SetAmbientScope(this);
         }
@@ -66,13 +79,13 @@ namespace EntityFrameworkCore.DbContextScope
 
             // Only save changes if we're not a nested scope. Otherwise, let the top-level scope
             // decide when the changes should be saved.
-            var c = 0;
+            var changeCount = 0;
             if (!_nested)
-                c = DbContexts.Commit();
+                changeCount = DbContexts.Commit();
 
             _completed = true;
 
-            return c;
+            return changeCount;
         }
 
         public async Task<int> SaveChangesAsync(CancellationToken cancelToken)
@@ -83,12 +96,12 @@ namespace EntityFrameworkCore.DbContextScope
                 throw new InvalidOperationException(
                     "You cannot call SaveChanges() more than once on a DbContextScope.");
 
-            var c = 0;
+            var changeCount = 0;
             if (!_nested)
-                c = await DbContexts.CommitAsync(cancelToken).ConfigureAwait(false);
+                changeCount = await DbContexts.CommitAsync(cancelToken).ConfigureAwait(false);
 
             _completed = true;
-            return c;
+            return changeCount;
         }
 
         public void Dispose()
@@ -103,78 +116,31 @@ namespace EntityFrameworkCore.DbContextScope
 
                 _disposed = true;
 
+#if DEBUG
+                _logger.LogDebug("Stop suppressing an ambient DbContext scope");
+#endif
+
                 return;
             }
 
+#if DEBUG
+            _logger.LogDebug("Leave DbContext scope");
+#endif
+
             if (!_nested)
-            {
-                if (!_completed)
-                {
-                    try
-                    {
-                        if (_readOnly)
-                            DbContexts.Commit();
-                        else
-                            // Disposing a read/write scope before having called its SaveChanges() method
-                            // indicates that something went wrong and that all changes should be rolled-back.
-                            DbContexts.Rollback();
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.WriteLine(e);
-                    }
-
-                    _completed = true;
-                }
-
                 DbContexts.Dispose();
-            }
 
             // Pop ourselves from the ambient scope stack
             var currentAmbientScope = GetAmbientScope();
             if (currentAmbientScope != this)
-                throw new InvalidOperationException("DbContextScope instances must be disposed of in the order in which they were created.");
+                throw new InvalidOperationException(
+                    "DbContextScope instances must be disposed of in the order in which they were created.");
 
             RemoveAmbientScope();
 
             if (_parentScope != null)
             {
-                if (_parentScope._disposed)
-                /*
-                     * If our parent scope has been disposed before us, it can only mean one thing:
-                     * someone started a parallel flow of execution and forgot to suppress the
-                     * ambient context before doing so. And we've been created in that parallel flow.
-                     *
-                     * Since the CallContext flows through all async points, the ambient scope in the
-                     * main flow of execution ended up becoming the ambient scope in this parallel flow
-                     * of execution as well. So when we were created, we captured it as our "parent scope".
-                     *
-                     * The main flow of execution then completed while our flow was still ongoing. When
-                     * the main flow of execution completed, the ambient scope there (which we think is our
-                     * parent scope) got disposed of as it should.
-                     *
-                     * So here we are: our parent scope isn't actually our parent scope. It was the ambient
-                     * scope in the main flow of execution from which we branched off. We should never have seen
-                     * it. Whoever wrote the code that created this parallel task should have suppressed
-                     * the ambient context before creating the task - that way we wouldn't have captured
-                     * this bogus parent scope.
-                     *
-                     * While this is definitely a programming error, it's not worth throwing here. We can only
-                     * be in one of two scenario:
-                     *
-                     * - If the developer who created the parallel task was mindful to force the creation of
-                     * a new scope in the parallel task (with IDbContextScopeFactory.CreateNew() instead of
-                     * JoinOrCreate()) then no harm has been done. We haven't tried to access the same DbContext
-                     * instance from multiple threads.
-                     *
-                     * - If this was not the case, they probably already got an exception complaining about the same
-                     * DbContext or ObjectContext being accessed from multiple threads simultaneously (or a related
-                     * error like multiple active result sets on a DataReader, which is caused by attempting to execute
-                     * several queries in parallel on the same DbContext instance). So the code has already blow up.
-                     *
-                     * So just record a warning here. Hopefully someone will see it and will fix the code.
-                     */
-
+                if (_parentScope._disposed && _nested)
                     throw new InvalidOperationException(
                         $@"PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
 This means that someone started a parallel flow of execution (e.g. created a TPL task, created a thread or queued a work item on the ThreadPool)
@@ -193,33 +159,33 @@ In order to fix this:
             _disposed = true;
         }
 
-        private static readonly AsyncLocal<object?> ambientDbContextScopeIdentifier = new();
+        private static readonly AsyncLocal<object?> ambientDbContextScopeIdHolder = new();
 
         private static readonly ConditionalWeakTable<object, DbContextScope> dbContextScopeInstances = new();
 
-        private readonly object _instanceIdentifier = new();
+        private readonly object _instanceId = new();
 
         private static void SetAmbientScope(DbContextScope newAmbientScope)
         {
             if (newAmbientScope == null)
                 throw new ArgumentNullException(nameof(newAmbientScope));
 
-            var current = ambientDbContextScopeIdentifier.Value;
+            var current = ambientDbContextScopeIdHolder.Value;
 
-            if (current == newAmbientScope._instanceIdentifier)
+            if (current == newAmbientScope._instanceId)
                 return;
 
             // Store the new scope's instance identifier in the CallContext, making it the ambient scope
-            ambientDbContextScopeIdentifier.Value = newAmbientScope._instanceIdentifier;
+            ambientDbContextScopeIdHolder.Value = newAmbientScope._instanceId;
 
             // Keep track of this instance (or do nothing if we're already tracking it)
-            dbContextScopeInstances.GetValue(newAmbientScope._instanceIdentifier, _ => newAmbientScope);
+            dbContextScopeInstances.GetValue(newAmbientScope._instanceId, _ => newAmbientScope);
         }
 
         private static void RemoveAmbientScope()
         {
-            var instanceIdentifier = ambientDbContextScopeIdentifier.Value;
-            ambientDbContextScopeIdentifier.Value = null;
+            var instanceIdentifier = ambientDbContextScopeIdHolder.Value;
+            ambientDbContextScopeIdHolder.Value = null;
 
             if (instanceIdentifier != null)
                 dbContextScopeInstances.Remove(instanceIdentifier);
@@ -227,7 +193,7 @@ In order to fix this:
 
         internal static DbContextScope? GetAmbientScope()
         {
-            var instanceIdentifier = ambientDbContextScopeIdentifier.Value;
+            var instanceIdentifier = ambientDbContextScopeIdHolder.Value;
             if (instanceIdentifier == null)
                 return null;
 

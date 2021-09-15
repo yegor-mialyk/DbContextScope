@@ -26,6 +26,7 @@ namespace EntityFrameworkCore.DbContextScope
         private readonly Dictionary<DbContext, IDbContextTransaction> _transactions = new();
         private bool _completed;
         private bool _disposed;
+        private readonly Dictionary<Type, DbContext> _initializedDbContexts = new();
 
         public DbContextCollection(bool readOnly = false,
             IsolationLevel isolationLevel = IsolationLevel.Unspecified,
@@ -36,8 +37,6 @@ namespace EntityFrameworkCore.DbContextScope
             _dbContextFactory = dbContextFactory;
         }
 
-        public Dictionary<Type, DbContext> InitializedDbContexts { get; } = new();
-
         public TDbContext Get<TDbContext>() where TDbContext : DbContext
         {
             if (_disposed)
@@ -45,14 +44,14 @@ namespace EntityFrameworkCore.DbContextScope
 
             var requestedType = typeof(TDbContext);
 
-            if (InitializedDbContexts.ContainsKey(requestedType))
-                return (TDbContext)InitializedDbContexts[requestedType];
+            if (_initializedDbContexts.ContainsKey(requestedType))
+                return (TDbContext)_initializedDbContexts[requestedType];
 
             var dbContext = _dbContextFactory != null
                 ? _dbContextFactory.Create<TDbContext>()
                 : Activator.CreateInstance<TDbContext>();
 
-            InitializedDbContexts.Add(requestedType, dbContext);
+            _initializedDbContexts.Add(requestedType, dbContext);
 
             dbContext.ChangeTracker.AutoDetectChangesEnabled = !_readOnly;
 
@@ -77,7 +76,7 @@ namespace EntityFrameworkCore.DbContextScope
 
             var changeCount = 0;
 
-            foreach (var dbContext in InitializedDbContexts.Values)
+            foreach (var dbContext in _initializedDbContexts.Values)
                 try
                 {
                     if (!_readOnly)
@@ -112,13 +111,13 @@ namespace EntityFrameworkCore.DbContextScope
 
             ExceptionDispatchInfo? lastError = null;
 
-            var c = 0;
+            var changeCount = 0;
 
-            foreach (var dbContext in InitializedDbContexts.Values)
+            foreach (var dbContext in _initializedDbContexts.Values)
                 try
                 {
                     if (!_readOnly)
-                        c += await dbContext.SaveChangesAsync(cancelToken).ConfigureAwait(false);
+                        changeCount += await dbContext.SaveChangesAsync(cancelToken).ConfigureAwait(false);
 
                     if (_transactions.TryGetValue(dbContext, out var transaction))
                     {
@@ -136,7 +135,7 @@ namespace EntityFrameworkCore.DbContextScope
 
             lastError?.Throw();
 
-            return c;
+            return changeCount;
         }
 
         public void Rollback()
@@ -149,7 +148,7 @@ namespace EntityFrameworkCore.DbContextScope
 
             ExceptionDispatchInfo? lastError = null;
 
-            foreach (var dbContext in InitializedDbContexts.Values)
+            foreach (var dbContext in _initializedDbContexts.Values)
             {
                 if (!_transactions.TryGetValue(dbContext, out var transaction))
                     continue;
@@ -189,7 +188,7 @@ namespace EntityFrameworkCore.DbContextScope
                     Debug.WriteLine(e);
                 }
 
-            foreach (var dbContext in InitializedDbContexts.Values)
+            foreach (var dbContext in _initializedDbContexts.Values)
                 try
                 {
                     dbContext.Dispose();
@@ -199,7 +198,7 @@ namespace EntityFrameworkCore.DbContextScope
                     Debug.WriteLine(e);
                 }
 
-            InitializedDbContexts.Clear();
+            _initializedDbContexts.Clear();
             _disposed = true;
         }
     }
