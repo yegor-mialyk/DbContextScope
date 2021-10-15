@@ -128,7 +128,7 @@ namespace EntityFrameworkCore.DbContextScope
 #endif
 
             if (!_nested)
-                DbContexts.Dispose();
+                DbContexts.DisposeCollection();
 
             // Pop ourselves from the ambient scope stack
             var currentAmbientScope = GetAmbientScope();

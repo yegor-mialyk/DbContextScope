@@ -15,9 +15,9 @@ namespace EntityFrameworkCore.DbContextScope
     {
         IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
 
-        IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
-
         IDbContextScope Create(IsolationLevel isolationLevel);
+
+        IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
 
         IDisposable HideContext();
     }

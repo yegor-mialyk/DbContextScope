@@ -28,14 +28,14 @@ namespace EntityFrameworkCore.DbContextScope
             return new DbContextScope(_logger, joiningOption, false, IsolationLevel.Unspecified, _dbContextFactory);
         }
 
-        public IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting)
-        {
-            return new DbContextScope(_logger, joiningOption, true, IsolationLevel.Unspecified, _dbContextFactory);
-        }
-
         public IDbContextScope Create(IsolationLevel isolationLevel)
         {
             return new DbContextScope(_logger, DbContextScopeOption.CreateNew, false, isolationLevel, _dbContextFactory);
+        }
+
+        public IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting)
+        {
+            return new DbContextScope(_logger, joiningOption, true, IsolationLevel.Unspecified, _dbContextFactory);
         }
 
         public IDisposable HideContext()

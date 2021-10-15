@@ -170,7 +170,7 @@ namespace EntityFrameworkCore.DbContextScope
             lastError?.Throw();
         }
 
-        public void Dispose()
+        public void DisposeCollection()
         {
             if (_disposed)
                 return;
