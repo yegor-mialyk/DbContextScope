@@ -6,22 +6,20 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-using System;
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.DbContextScope
+namespace EntityFrameworkCore.DbContextScope;
+
+public class AmbientDbContextLocator : IAmbientDbContextLocator
 {
-    public class AmbientDbContextLocator : IAmbientDbContextLocator
+    public TDbContext Get<TDbContext>() where TDbContext : DbContext
     {
-        public TDbContext Get<TDbContext>() where TDbContext : DbContext
-        {
-            var ambientDbContextScope = DbContextScope.GetAmbientScope();
+        var ambientDbContextScope = DbContextScope.GetAmbientScope();
 
-            if (ambientDbContextScope == null)
-                throw new InvalidOperationException(
-                    "No ambient DbContext scope found. The method has been called outside of the DbContextScope.");
+        if (ambientDbContextScope == null)
+            throw new InvalidOperationException(
+                "No ambient DbContext scope found. The method has been called outside of the DbContextScope.");
 
-            return ambientDbContextScope.DbContexts.Get<TDbContext>();
-        }
+        return ambientDbContextScope.DbContexts.Get<TDbContext>();
     }
 }

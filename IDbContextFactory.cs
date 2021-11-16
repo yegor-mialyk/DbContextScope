@@ -8,10 +8,9 @@
 
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.DbContextScope
+namespace EntityFrameworkCore.DbContextScope;
+
+public interface IDbContextFactory
 {
-    public interface IDbContextFactory
-    {
-        TDbContext Create<TDbContext>() where TDbContext : DbContext;
-    }
+    TDbContext Create<TDbContext>() where TDbContext : DbContext;
 }

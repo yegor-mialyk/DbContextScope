@@ -6,15 +6,10 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
+namespace EntityFrameworkCore.DbContextScope;
 
-namespace EntityFrameworkCore.DbContextScope
+public interface IDbContextScope : IDisposable
 {
-    public interface IDbContextScope : IDisposable
-    {
-        int SaveChanges();
-        Task<int> SaveChangesAsync(CancellationToken cancelToken);
-    }
+    int SaveChanges();
+    Task<int> SaveChangesAsync(CancellationToken cancelToken);
 }

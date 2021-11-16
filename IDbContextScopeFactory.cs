@@ -6,19 +6,17 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-using System;
 using System.Data;
 
-namespace EntityFrameworkCore.DbContextScope
+namespace EntityFrameworkCore.DbContextScope;
+
+public interface IDbContextScopeFactory
 {
-    public interface IDbContextScopeFactory
-    {
-        IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
+    IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
 
-        IDbContextScope Create(IsolationLevel isolationLevel);
+    IDbContextScope Create(IsolationLevel isolationLevel);
 
-        IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
+    IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
 
-        IDisposable HideContext();
-    }
+    IDisposable HideContext();
 }

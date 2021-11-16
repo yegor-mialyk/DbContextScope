@@ -6,143 +6,140 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-using System;
 using System.Data;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
-namespace EntityFrameworkCore.DbContextScope
+namespace EntityFrameworkCore.DbContextScope;
+
+public sealed class DbContextScope : IDbContextScope
 {
-    public sealed class DbContextScope : IDbContextScope
+    private bool _completed;
+    private bool _disposed;
+    private readonly bool _nested;
+    private readonly DbContextScope? _parentScope;
+    private readonly ILogger<DbContextScope> _logger;
+    private readonly DbContextScopeOption _joiningOption;
+    private readonly bool _readOnly;
+
+    public DbContextScope(ILogger<DbContextScope> logger, DbContextScopeOption joiningOption, bool readOnly = false,
+        IsolationLevel isolationLevel = IsolationLevel.Unspecified,
+        IDbContextFactory? dbContextFactory = null)
     {
-        private bool _completed;
-        private bool _disposed;
-        private readonly bool _nested;
-        private readonly DbContextScope? _parentScope;
-        private readonly ILogger<DbContextScope> _logger;
-        private readonly DbContextScopeOption _joiningOption;
-        private readonly bool _readOnly;
+        if (isolationLevel != IsolationLevel.Unspecified)
+            joiningOption = DbContextScopeOption.CreateNew;
 
-        public DbContextScope(ILogger<DbContextScope> logger, DbContextScopeOption joiningOption, bool readOnly = false,
-            IsolationLevel isolationLevel = IsolationLevel.Unspecified,
-            IDbContextFactory? dbContextFactory = null)
+        _logger = logger;
+        _joiningOption = joiningOption;
+        _readOnly = readOnly;
+
+        _parentScope = GetAmbientScope();
+
+        if (joiningOption == DbContextScopeOption.Suppress)
         {
-            if (isolationLevel != IsolationLevel.Unspecified)
-                joiningOption = DbContextScopeOption.CreateNew;
-
-            _logger = logger;
-            _joiningOption = joiningOption;
-            _readOnly = readOnly;
-
-            _parentScope = GetAmbientScope();
-
-            if (joiningOption == DbContextScopeOption.Suppress)
-            {
 #if DEBUG
-                _logger.LogDebug("Start suppressing an ambient DbContext scope");
+            _logger.LogDebug("Start suppressing an ambient DbContext scope");
 #endif
-                ambientDbContextScopeIdHolder.Value = null;
-                return;
-            }
-
-            if (_parentScope != null && joiningOption == DbContextScopeOption.JoinExisting &&
-                (!_parentScope._readOnly || _readOnly))
-            {
-#if DEBUG
-                _logger.LogDebug("Join existing DbContext scope");
-#endif
-                _nested = true;
-                DbContexts = _parentScope.DbContexts;
-            }
-            else
-            {
-#if DEBUG
-                _logger.LogDebug("Start new DbContext scope");
-#endif
-                DbContexts = new(_readOnly, isolationLevel, dbContextFactory);
-            }
-
-            SetAmbientScope(this);
+            ambientDbContextScopeIdHolder.Value = null;
+            return;
         }
 
-        public DbContextCollection DbContexts { get; } = default!;
-
-        public int SaveChanges()
+        if (_parentScope != null && joiningOption == DbContextScopeOption.JoinExisting &&
+            (!_parentScope._readOnly || _readOnly))
         {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(DbContextScope));
-            if (_completed)
-                throw new InvalidOperationException(
-                    "You cannot call SaveChanges() more than once on a DbContextScope.");
-
-            // Only save changes if we're not a nested scope. Otherwise, let the top-level scope
-            // decide when the changes should be saved.
-            var changeCount = 0;
-            if (!_nested)
-                changeCount = DbContexts.Commit();
-
-            _completed = true;
-
-            return changeCount;
+#if DEBUG
+            _logger.LogDebug("Join existing DbContext scope");
+#endif
+            _nested = true;
+            DbContexts = _parentScope.DbContexts;
+        }
+        else
+        {
+#if DEBUG
+            _logger.LogDebug("Start new DbContext scope");
+#endif
+            DbContexts = new(_readOnly, isolationLevel, dbContextFactory);
         }
 
-        public async Task<int> SaveChangesAsync(CancellationToken cancelToken)
+        SetAmbientScope(this);
+    }
+
+    public DbContextCollection DbContexts { get; } = default!;
+
+    public int SaveChanges()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(DbContextScope));
+        if (_completed)
+            throw new InvalidOperationException(
+                "You cannot call SaveChanges() more than once on a DbContextScope.");
+
+        // Only save changes if we're not a nested scope. Otherwise, let the top-level scope
+        // decide when the changes should be saved.
+        var changeCount = 0;
+        if (!_nested)
+            changeCount = DbContexts.Commit();
+
+        _completed = true;
+
+        return changeCount;
+    }
+
+    public async Task<int> SaveChangesAsync(CancellationToken cancelToken)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(DbContextScope));
+        if (_completed)
+            throw new InvalidOperationException(
+                "You cannot call SaveChanges() more than once on a DbContextScope.");
+
+        var changeCount = 0;
+        if (!_nested)
+            changeCount = await DbContexts.CommitAsync(cancelToken).ConfigureAwait(false);
+
+        _completed = true;
+        return changeCount;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        if (_joiningOption == DbContextScopeOption.Suppress)
         {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(DbContextScope));
-            if (_completed)
-                throw new InvalidOperationException(
-                    "You cannot call SaveChanges() more than once on a DbContextScope.");
-
-            var changeCount = 0;
-            if (!_nested)
-                changeCount = await DbContexts.CommitAsync(cancelToken).ConfigureAwait(false);
-
-            _completed = true;
-            return changeCount;
-        }
-
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
-
-            if (_joiningOption == DbContextScopeOption.Suppress)
-            {
-                if (_parentScope != null)
-                    SetAmbientScope(_parentScope);
-
-                _disposed = true;
-
-#if DEBUG
-                _logger.LogDebug("Stop suppressing an ambient DbContext scope");
-#endif
-
-                return;
-            }
-
-#if DEBUG
-            _logger.LogDebug("Leave DbContext scope");
-#endif
-
-            if (!_nested)
-                DbContexts.DisposeCollection();
-
-            // Pop ourselves from the ambient scope stack
-            var currentAmbientScope = GetAmbientScope();
-            if (currentAmbientScope != this)
-                throw new InvalidOperationException(
-                    "DbContextScope instances must be disposed of in the order in which they were created.");
-
-            RemoveAmbientScope();
-
             if (_parentScope != null)
-            {
-                if (_parentScope._disposed && _nested)
-                    throw new InvalidOperationException(
-                        $@"PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
+                SetAmbientScope(_parentScope);
+
+            _disposed = true;
+
+#if DEBUG
+            _logger.LogDebug("Stop suppressing an ambient DbContext scope");
+#endif
+
+            return;
+        }
+
+#if DEBUG
+        _logger.LogDebug("Leave DbContext scope");
+#endif
+
+        if (!_nested)
+            DbContexts.DisposeCollection();
+
+        // Pop ourselves from the ambient scope stack
+        var currentAmbientScope = GetAmbientScope();
+        if (currentAmbientScope != this)
+            throw new InvalidOperationException(
+                "DbContextScope instances must be disposed of in the order in which they were created.");
+
+        RemoveAmbientScope();
+
+        if (_parentScope != null)
+        {
+            if (_parentScope._disposed && _nested)
+                throw new InvalidOperationException(
+                    $@"PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
 This means that someone started a parallel flow of execution (e.g. created a TPL task, created a thread or queued a work item on the ThreadPool)
 within the context of a DbContextScope without suppressing the ambient context first.
 
@@ -153,56 +150,55 @@ In order to fix this:
 
 {Environment.StackTrace}");
 
-                SetAmbientScope(_parentScope);
-            }
-
-            _disposed = true;
+            SetAmbientScope(_parentScope);
         }
 
-        private static readonly AsyncLocal<object?> ambientDbContextScopeIdHolder = new();
+        _disposed = true;
+    }
 
-        private static readonly ConditionalWeakTable<object, DbContextScope> dbContextScopeInstances = new();
+    private static readonly AsyncLocal<object?> ambientDbContextScopeIdHolder = new();
 
-        private readonly object _instanceId = new();
+    private static readonly ConditionalWeakTable<object, DbContextScope> dbContextScopeInstances = new();
 
-        private static void SetAmbientScope(DbContextScope newAmbientScope)
-        {
-            if (newAmbientScope == null)
-                throw new ArgumentNullException(nameof(newAmbientScope));
+    private readonly object _instanceId = new();
 
-            var current = ambientDbContextScopeIdHolder.Value;
+    private static void SetAmbientScope(DbContextScope newAmbientScope)
+    {
+        if (newAmbientScope == null)
+            throw new ArgumentNullException(nameof(newAmbientScope));
 
-            if (current == newAmbientScope._instanceId)
-                return;
+        var current = ambientDbContextScopeIdHolder.Value;
 
-            // Store the new scope's instance identifier in the CallContext, making it the ambient scope
-            ambientDbContextScopeIdHolder.Value = newAmbientScope._instanceId;
+        if (current == newAmbientScope._instanceId)
+            return;
 
-            // Keep track of this instance (or do nothing if we're already tracking it)
-            dbContextScopeInstances.GetValue(newAmbientScope._instanceId, _ => newAmbientScope);
-        }
+        // Store the new scope's instance identifier in the CallContext, making it the ambient scope
+        ambientDbContextScopeIdHolder.Value = newAmbientScope._instanceId;
 
-        private static void RemoveAmbientScope()
-        {
-            var instanceIdentifier = ambientDbContextScopeIdHolder.Value;
-            ambientDbContextScopeIdHolder.Value = null;
+        // Keep track of this instance (or do nothing if we're already tracking it)
+        dbContextScopeInstances.GetValue(newAmbientScope._instanceId, _ => newAmbientScope);
+    }
 
-            if (instanceIdentifier != null)
-                dbContextScopeInstances.Remove(instanceIdentifier);
-        }
+    private static void RemoveAmbientScope()
+    {
+        var instanceIdentifier = ambientDbContextScopeIdHolder.Value;
+        ambientDbContextScopeIdHolder.Value = null;
 
-        internal static DbContextScope? GetAmbientScope()
-        {
-            var instanceIdentifier = ambientDbContextScopeIdHolder.Value;
-            if (instanceIdentifier == null)
-                return null;
+        if (instanceIdentifier != null)
+            dbContextScopeInstances.Remove(instanceIdentifier);
+    }
 
-            if (dbContextScopeInstances.TryGetValue(instanceIdentifier, out var ambientScope))
-                return ambientScope;
+    internal static DbContextScope? GetAmbientScope()
+    {
+        var instanceIdentifier = ambientDbContextScopeIdHolder.Value;
+        if (instanceIdentifier == null)
+            return null;
 
-            throw new InvalidOperationException("Found a reference to an ambient DbContextScope in the control flow " +
-                                                "but no instance in the dbContextScopeInstances table.\r\n\r\n" +
-                                                $"{Environment.StackTrace}");
-        }
+        if (dbContextScopeInstances.TryGetValue(instanceIdentifier, out var ambientScope))
+            return ambientScope;
+
+        throw new InvalidOperationException("Found a reference to an ambient DbContextScope in the control flow " +
+                                            "but no instance in the dbContextScopeInstances table.\r\n\r\n" +
+                                            $"{Environment.StackTrace}");
     }
 }

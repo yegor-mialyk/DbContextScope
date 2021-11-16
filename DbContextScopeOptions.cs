@@ -6,12 +6,11 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-namespace EntityFrameworkCore.DbContextScope
+namespace EntityFrameworkCore.DbContextScope;
+
+public enum DbContextScopeOption
 {
-    public enum DbContextScopeOption
-    {
-        JoinExisting,
-        CreateNew,
-        Suppress
-    }
+    JoinExisting,
+    CreateNew,
+    Suppress
 }

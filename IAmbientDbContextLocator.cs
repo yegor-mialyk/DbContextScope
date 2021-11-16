@@ -8,10 +8,9 @@
 
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.DbContextScope
+namespace EntityFrameworkCore.DbContextScope;
+
+public interface IAmbientDbContextLocator
 {
-    public interface IAmbientDbContextLocator
-    {
-        TDbContext Get<TDbContext>() where TDbContext : DbContext;
-    }
+    TDbContext Get<TDbContext>() where TDbContext : DbContext;
 }
