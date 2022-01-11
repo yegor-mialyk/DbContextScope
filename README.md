@@ -28,12 +28,7 @@ This is the `DbContextScope` interface:
 public interface IDbContextScope : IDisposable
 {
     void SaveChanges();
-    Task SaveChangesAsync();
-
-    void RefreshEntitiesInParentScope(IEnumerable entities);
-    Task RefreshEntitiesInParentScopeAsync(IEnumerable entities);
-
-    IDbContextCollection DbContexts { get; }
+    Task<int> SaveChangesAsync(CancellationToken cancelToken);
 }
 ```
 
@@ -47,12 +42,12 @@ You can instantiate a `DbContextScope` directly. Or you can take a dependency on
 public interface IDbContextScopeFactory
 {
     IDbContextScope Create(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
-    IDbContextReadOnlyScope CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
 
-    IDbContextScope CreateWithTransaction(IsolationLevel isolationLevel);
-    IDbContextReadOnlyScope CreateReadOnlyWithTransaction(IsolationLevel isolationLevel);
+    IDbContextScope Create(IsolationLevel isolationLevel);
 
-    IDisposable SuppressAmbientContext();
+    IDisposable CreateReadOnly(DbContextScopeOption joiningOption = DbContextScopeOption.JoinExisting);
+
+    IDisposable HideContext();
 }
 ```
 
@@ -72,21 +67,7 @@ public void MarkUserAsPremium(Guid userId)
 }
 ```
 
-Within a `DbContextScope`, you can access the `DbContext` instances that the scope manages in two ways. You can get them via the `DbContextScope.DbContexts` property like this:
-
-```C#
-public void SomeServiceMethod(Guid userId)
-{
-    using (var dbContextScope = _dbContextScopeFactory.Create())
-    {
-        var user = dbContextScope.DbContexts.Get<MyDbContext>.Set<User>.Find(userId);
-        [...]
-        dbContextScope.SaveChanges();
-    }
-}
-```
-
-But that's of course only available in the method that created the `DbContextScope`. If you need to access the ambient `DbContext` instances anywhere else (e.g. in a repository class), you can just take a dependency on `IAmbientDbContextLocator`, which you would use like this:
+If you need to access the ambient `DbContext` instances, you can just take a dependency on `IAmbientDbContextLocator`, which you would use like this:
 
 ```C#
 public class UserRepository : IUserRepository
@@ -156,21 +137,7 @@ This makes creating a service method that combines the logic of multiple other s
 
 ### Read-only scopes
 
-If a service method is read-only, having to call `SaveChanges()` on its `DbContextScope` before returning can be a pain. But not calling it isn't an option either as:
-
-1. It will make code review and maintenance difficult (did you intend not to call `SaveChanges()` or did you forget to call it?)
-2. If you requested an explicit database transaction to be started (we'll see later how to do it), not calling `SaveChanges()` will result in the transaction being rolled back. Database monitoring systems will usually interpret transaction rollbacks as an indication of an application error. Having spurious rollbacks is not a good idea.
-
-The `DbContextReadOnlyScope` class addresses this issue. This is its interface:
-
-```C#
-public interface IDbContextReadOnlyScope : IDisposable
-{
-    IDbContextCollection DbContexts { get; }
-}
-```
-
-And this is how you use it:
+This is how you use it:
 
 ```C#
 public int NumberPremiumUsers()
@@ -221,7 +188,7 @@ public void RandomServiceMethod()
         // Do some work that uses the ambient context
         [...]
 
-        using (_dbContextScopeFactory.SuppressAmbientContext())
+        using (_dbContextScopeFactory.HideContext())
         {
             // Kick off parallel tasks that shouldn't be using the
             // ambient context here. E.g. create new threads,
