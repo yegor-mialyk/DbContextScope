@@ -22,19 +22,7 @@ I would highly recommend reading the following blog post first. It examines in g
 
 ### Overview
 
-This is the `DbContextScope` interface:
-
-```C#
-public interface IDbContextScope : IDisposable
-{
-    void SaveChanges();
-    Task<int> SaveChangesAsync(CancellationToken cancelToken);
-}
-```
-
 The purpose of a `DbContextScope` is to create and manage the `DbContext` instances used within a code block. A `DbContextScope` therefore effectively defines the boundary of a business transaction.
-
-Wondering why DbContextScope wasn't called "UnitOfWork" or "UnitOfWorkScope"? The answer is here: [Why DbContextScope and not UnitOfWork?](http://mehdi.me/ambient-dbcontext-in-ef6/#whydbcontextscopeandnotunitofwork)
 
 You can instantiate a `DbContextScope` directly. Or you can take a dependency on `IDbContextScopeFactory`, which provides convenience methods to create a `DbContextScope` with the most common configurations:
 
@@ -62,6 +50,7 @@ public void MarkUserAsPremium(Guid userId)
     {
         var user = _userRepository.Get(userId);
         user.IsPremiumUser = true;
+
         dbContextScope.SaveChanges();
     }
 }
@@ -76,7 +65,9 @@ public class UserRepository : IUserRepository
 
     public UserRepository(IAmbientDbContextLocator contextLocator)
     {
-        if (contextLocator == null) throw new ArgumentNullException("contextLocator");
+        if (contextLocator is null)
+            throw new ArgumentNullException("contextLocator");
+
         _contextLocator = contextLocator;
     }
 
@@ -102,6 +93,7 @@ public void MarkUserAsPremium(Guid userId)
     {
         var user = _userRepository.Get(userId);
         user.IsPremiumUser = true;
+
         dbContextScope.SaveChanges();
     }
 }
@@ -251,38 +243,3 @@ Instead, either:
 - Don't return persistent entities. This is the easiest, cleanest, most foolproof method. E.g. if your service creates a new domain model object, don't return it. Return its ID instead and let the client load the entity in its own `DbContext` instance if it needs the actual object.
 - If you absolutely need to return a persistent entity, switch back to the ambient context, load the entity you want to return in the ambient context and return that.
 
-#### 2. Upon exit, a service method must make sure that all modifications it made to persistent entities have been replicated in the parent scope
-
-If your service method forces the creation of a new `DbContextScope` and then modifies persistent entities in that new scope, it must make sure that the parent ambient scope (if any) can "see" those modification when it returns.
-
-I.e. if the `DbContext` instances in the parent scope had already loaded the entities you modified in their first-level cache (ObjectStateManager), your service method must force a refresh of these entities to ensure that the parent scope doesn't end up working with stale versions of these objects.
-
-The `DbContextScope` class has a handy helper method that makes this fairly painless:
-
-```C#
-public void RandomServiceMethod(Guid accountId)
-{
-    // Forcing the creation of a new scope (i.e. we'll be using our
-    // own DbContext instances)
-    using (var dbContextScope = _dbContextScopeFactory.Create(DbContextScopeOption.ForceCreateNew))
-    {
-        var account = _accountRepository.Get(accountId);
-        account.Disabled = true;
-
-        // Since we forced the creation of a new scope,
-        // this will persist our changes to the database
-        // regardless of what the parent scope does.
-        dbContextScope.SaveChanges();
-
-        // If the caller of this method had already
-        // loaded that account object into their own
-        // DbContext instance, their version
-        // has now become stale. They won't see that
-        // this account has been disabled and might
-        // therefore execute incorrect logic.
-        // So make sure that the version our caller
-        // has is up-to-date.
-        dbContextScope.RefreshEntitiesInParentScope(new[] { account });
-    }
-}
-```
