@@ -7,10 +7,10 @@
  */
 
 using System.Data;
-using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace EntityFrameworkCore.DbContextScope;
 
@@ -18,16 +18,18 @@ public class DbContextCollection
 {
     private readonly IDbContextFactory? _dbContextFactory;
     private readonly IsolationLevel _isolationLevel;
+    private readonly ILogger<DbContextScope> _logger;
     private readonly bool _readOnly;
     private readonly Dictionary<DbContext, IDbContextTransaction> _transactions = new();
     private bool _completed;
     private bool _disposed;
     private readonly Dictionary<Type, DbContext> _initializedDbContexts = new();
 
-    public DbContextCollection(bool readOnly = false,
+    public DbContextCollection(ILogger<DbContextScope> logger, bool readOnly = false,
         IsolationLevel isolationLevel = IsolationLevel.Unspecified,
         IDbContextFactory? dbContextFactory = null)
     {
+        _logger = logger;
         _readOnly = readOnly;
         _isolationLevel = isolationLevel;
         _dbContextFactory = dbContextFactory;
@@ -43,7 +45,7 @@ public class DbContextCollection
         if (_initializedDbContexts.ContainsKey(requestedType))
             return (TDbContext)_initializedDbContexts[requestedType];
 
-        var dbContext = _dbContextFactory != null
+        var dbContext = _dbContextFactory is not null
             ? _dbContextFactory.Create<TDbContext>()
             : Activator.CreateInstance<TDbContext>();
 
@@ -78,11 +80,11 @@ public class DbContextCollection
                 if (!_readOnly)
                     changeCount += dbContext.SaveChanges();
 
-                if (_transactions.TryGetValue(dbContext, out var transaction))
-                {
-                    transaction.Commit();
-                    transaction.Dispose();
-                }
+                if (!_transactions.TryGetValue(dbContext, out var transaction))
+                    continue;
+
+                transaction.Commit();
+                transaction.Dispose();
             }
             catch (Exception e)
             {
@@ -90,6 +92,7 @@ public class DbContextCollection
             }
 
         _transactions.Clear();
+
         _completed = true;
 
         lastError?.Throw();
@@ -115,11 +118,12 @@ public class DbContextCollection
                 if (!_readOnly)
                     changeCount += await dbContext.SaveChangesAsync(cancelToken).ConfigureAwait(false);
 
-                if (_transactions.TryGetValue(dbContext, out var transaction))
-                {
-                    transaction.Commit();
-                    transaction.Dispose();
-                }
+                if (!_transactions.TryGetValue(dbContext, out var transaction))
+                    continue;
+
+                await transaction.CommitAsync(cancelToken).ConfigureAwait(false);
+
+                transaction.Dispose();
             }
             catch (Exception e)
             {
@@ -127,6 +131,7 @@ public class DbContextCollection
             }
 
         _transactions.Clear();
+
         _completed = true;
 
         lastError?.Throw();
@@ -181,7 +186,7 @@ public class DbContextCollection
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                _logger.LogError(e, "Error commiting/rolling back DbContextCollection");
             }
 
         foreach (var dbContext in _initializedDbContexts.Values)
@@ -191,7 +196,7 @@ public class DbContextCollection
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                _logger.LogError(e, "Error disposing DbContext");
             }
 
         _initializedDbContexts.Clear();

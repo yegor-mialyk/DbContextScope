@@ -16,7 +16,7 @@ public class AmbientDbContextLocator : IAmbientDbContextLocator
     {
         var ambientDbContextScope = DbContextScope.GetAmbientScope();
 
-        if (ambientDbContextScope == null)
+        if (ambientDbContextScope is null)
             throw new InvalidOperationException(
                 "No ambient DbContext scope found. The method has been called outside of the DbContextScope.");
 
