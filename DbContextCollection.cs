@@ -42,8 +42,8 @@ public class DbContextCollection
 
         var requestedType = typeof(TDbContext);
 
-        if (_initializedDbContexts.ContainsKey(requestedType))
-            return (TDbContext)_initializedDbContexts[requestedType];
+        if (_initializedDbContexts.TryGetValue(requestedType, out var context))
+            return (TDbContext)context;
 
         var dbContext = _dbContextFactory is not null
             ? _dbContextFactory.Create<TDbContext>()
