@@ -72,8 +72,8 @@ public sealed class DbContextScope : IDbContextScope
 
     public int SaveChanges()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(DbContextScope));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextScope));
+
         if (_completed)
             throw new InvalidOperationException("You cannot call SaveChanges() more than once on a DbContextScope.");
 
@@ -89,8 +89,8 @@ public sealed class DbContextScope : IDbContextScope
 
     public async Task<int> SaveChangesAsync(CancellationToken cancelToken)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(DbContextScope));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextScope));
+
         if (_completed)
             throw new InvalidOperationException("You cannot call SaveChanges() more than once on a DbContextScope.");
 

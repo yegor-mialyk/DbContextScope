@@ -37,8 +37,7 @@ public class DbContextCollection
 
     public TDbContext Get<TDbContext>() where TDbContext : DbContext
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(DbContextCollection));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextCollection));
 
         var requestedType = typeof(TDbContext);
 
@@ -53,19 +52,19 @@ public class DbContextCollection
 
         dbContext.ChangeTracker.AutoDetectChangesEnabled = !_readOnly;
 
-        if (_isolationLevel != IsolationLevel.Unspecified)
-        {
-            var transaction = dbContext.Database.BeginTransaction(_isolationLevel);
-            _transactions.Add(dbContext, transaction);
-        }
+        if (_isolationLevel == IsolationLevel.Unspecified)
+            return dbContext;
+
+        var transaction = dbContext.Database.BeginTransaction(_isolationLevel);
+        _transactions.Add(dbContext, transaction);
 
         return dbContext;
     }
 
     public int Commit()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(DbContextCollection));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextCollection));
+
         if (_completed)
             throw new InvalidOperationException(
                 "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
@@ -102,8 +101,8 @@ public class DbContextCollection
 
     public async Task<int> CommitAsync(CancellationToken cancelToken)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(DbContextCollection));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextCollection));
+
         if (_completed)
             throw new InvalidOperationException(
                 "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
@@ -139,10 +138,10 @@ public class DbContextCollection
         return changeCount;
     }
 
-    public void Rollback()
+    private void Rollback()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(DbContextCollection));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextCollection));
+
         if (_completed)
             throw new InvalidOperationException(
                 "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
