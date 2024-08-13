@@ -139,16 +139,18 @@ public sealed class DbContextScope : IDbContextScope
 
         if (_parentScope is { _disposed: true } && _nested)
             throw new InvalidOperationException(
-                $@"PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
-This means that someone started a parallel flow of execution (e.g. created a TPL task, created a thread or queued a work item on the ThreadPool)
-within the context of a DbContextScope without suppressing the ambient context first.
+                $"""
+                 PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
+                 This means that someone started a parallel flow of execution (e.g. created a TPL task, created a thread or queued a work item on the ThreadPool)
+                 within the context of a DbContextScope without suppressing the ambient context first.
 
-In order to fix this:
-1) Look at the stack trace below - this is the stack trace of the parallel task in question.
-2) Find out where this parallel task was created.
-3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.HideContext() (wrap the parallel task creation code block in this).
+                 In order to fix this:
+                 1) Look at the stack trace below - this is the stack trace of the parallel task in question.
+                 2) Find out where this parallel task was created.
+                 3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.HideContext() (wrap the parallel task creation code block in this).
 
-{Environment.StackTrace}");
+                 {Environment.StackTrace}
+                 """);
 
         SetAmbientScope(_parentScope);
 
