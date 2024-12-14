@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace EntityFrameworkCore.DbContextScope;
 
-public class DbContextCollection
+public sealed class DbContextCollection
 {
     private readonly IDbContextFactory? _dbContextFactory;
     private readonly IsolationLevel _isolationLevel;

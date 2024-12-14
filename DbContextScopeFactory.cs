@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace EntityFrameworkCore.DbContextScope;
 
-public class DbContextScopeFactory : IDbContextScopeFactory
+public sealed class DbContextScopeFactory : IDbContextScopeFactory
 {
     private readonly ILogger<DbContextScope> _logger;
     private readonly IDbContextFactory? _dbContextFactory;

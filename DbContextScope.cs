@@ -68,7 +68,7 @@ public sealed class DbContextScope : IDbContextScope
         SetAmbientScope(this);
     }
 
-    public DbContextCollection DbContexts { get; } = default!;
+    public DbContextCollection DbContexts { get; } = null!;
 
     public int SaveChanges()
     {

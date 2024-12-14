@@ -1,4 +1,4 @@
-﻿/* 
+﻿/*
  * Copyright (C) 2014 Mehdi El Gueddari
  * http://mehdi.me
  *
@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EntityFrameworkCore.DbContextScope;
 
-public class AmbientDbContextLocator : IAmbientDbContextLocator
+public sealed class AmbientDbContextLocator : IAmbientDbContextLocator
 {
     public TDbContext Get<TDbContext>() where TDbContext : DbContext
     {
