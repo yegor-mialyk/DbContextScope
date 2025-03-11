@@ -1,10 +1,11 @@
-﻿/*
- * Copyright (C) 2014 Mehdi El Gueddari
- * http://mehdi.me
- *
- * This software may be modified and distributed under the terms
- * of the MIT license.  See the LICENSE file for details.
- */
+﻿//
+// Entity Framework Core DbContext Scope
+//
+// Copyright (C) 2014 Mehdi El Gueddari (http://mehdi.me)
+// Copyright (C) 2020-2025, Yegor Mialyk. All Rights Reserved.
+//
+// Licensed under the MIT License. See the LICENSE file for details.
+//
 
 using System.Data;
 using System.Runtime.ExceptionServices;
@@ -18,18 +19,18 @@ public sealed class DbContextCollection
 {
     private readonly IDbContextFactory? _dbContextFactory;
     private readonly IsolationLevel _isolationLevel;
-    private readonly ILogger<DbContextScope> _logger;
+    private readonly ILogger<DbContextCollection> _logger;
     private readonly bool _readOnly;
     private readonly Dictionary<DbContext, IDbContextTransaction> _transactions = new();
     private bool _completed;
     private bool _disposed;
     private readonly Dictionary<Type, DbContext> _initializedDbContexts = new();
 
-    public DbContextCollection(ILogger<DbContextScope> logger, bool readOnly = false,
+    public DbContextCollection(ILoggerFactory loggerFactory, bool readOnly = false,
         IsolationLevel isolationLevel = IsolationLevel.Unspecified,
         IDbContextFactory? dbContextFactory = null)
     {
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<DbContextCollection>();
         _readOnly = readOnly;
         _isolationLevel = isolationLevel;
         _dbContextFactory = dbContextFactory;

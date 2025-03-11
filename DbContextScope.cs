@@ -1,10 +1,11 @@
-﻿/*
- * Copyright (C) 2014 Mehdi El Gueddari
- * http://mehdi.me
- *
- * This software may be modified and distributed under the terms
- * of the MIT license.  See the LICENSE file for details.
- */
+﻿//
+// Entity Framework Core DbContext Scope
+//
+// Copyright (C) 2014 Mehdi El Gueddari (http://mehdi.me)
+// Copyright (C) 2020-2025, Yegor Mialyk. All Rights Reserved.
+//
+// Licensed under the MIT License. See the LICENSE file for details.
+//
 
 using System.Data;
 using System.Runtime.CompilerServices;
@@ -22,14 +23,14 @@ public sealed class DbContextScope : IDbContextScope
     private readonly DbContextScopeOption _joiningOption;
     private readonly bool _readOnly;
 
-    public DbContextScope(ILogger<DbContextScope> logger, DbContextScopeOption joiningOption, bool readOnly = false,
+    public DbContextScope(ILoggerFactory loggerFactory, DbContextScopeOption joiningOption, bool readOnly = false,
         IsolationLevel isolationLevel = IsolationLevel.Unspecified,
         IDbContextFactory? dbContextFactory = null)
     {
         if (isolationLevel != IsolationLevel.Unspecified)
             joiningOption = DbContextScopeOption.CreateNew;
 
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<DbContextScope>();
         _joiningOption = joiningOption;
         _readOnly = readOnly;
 
@@ -37,9 +38,8 @@ public sealed class DbContextScope : IDbContextScope
 
         if (joiningOption == DbContextScopeOption.Suppress)
         {
-#if DEBUG
             _logger.LogDebug("Start suppressing an ambient DbContext scope");
-#endif
+
             ambientDbContextScopeIdHolder.Value = null;
 
             return;
@@ -48,9 +48,7 @@ public sealed class DbContextScope : IDbContextScope
         if (_parentScope is not null && joiningOption == DbContextScopeOption.JoinExisting &&
             (!_parentScope._readOnly || _readOnly))
         {
-#if DEBUG
             _logger.LogDebug("Join existing DbContext scope");
-#endif
 
             _nested = true;
 
@@ -58,11 +56,9 @@ public sealed class DbContextScope : IDbContextScope
         }
         else
         {
-#if DEBUG
             _logger.LogDebug("Start new DbContext scope");
-#endif
 
-            DbContexts = new(logger, _readOnly, isolationLevel, dbContextFactory);
+            DbContexts = new(loggerFactory, _readOnly, isolationLevel, dbContextFactory);
         }
 
         SetAmbientScope(this);
@@ -115,16 +111,12 @@ public sealed class DbContextScope : IDbContextScope
 
             _disposed = true;
 
-#if DEBUG
             _logger.LogDebug("Stop suppressing an ambient DbContext scope");
-#endif
 
             return;
         }
 
-#if DEBUG
         _logger.LogDebug("Leave DbContext scope");
-#endif
 
         if (!_nested)
             DbContexts.DisposeCollection();
@@ -140,17 +132,17 @@ public sealed class DbContextScope : IDbContextScope
         if (_parentScope is { _disposed: true } && _nested)
             throw new InvalidOperationException(
                 $"""
-                 PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
-                 This means that someone started a parallel flow of execution (e.g. created a TPL task, created a thread or queued a work item on the ThreadPool)
-                 within the context of a DbContextScope without suppressing the ambient context first.
+                PROGRAMMING ERROR - When attempting to dispose a DbContextScope, we found that our parent DbContextScope has already been disposed!
+                This means that someone started a parallel flow of execution (e.g. created a TPL task, created a thread or queued a work item on the ThreadPool)
+                within the context of a DbContextScope without suppressing the ambient context first.
 
-                 In order to fix this:
-                 1) Look at the stack trace below - this is the stack trace of the parallel task in question.
-                 2) Find out where this parallel task was created.
-                 3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.HideContext() (wrap the parallel task creation code block in this).
+                In order to fix this:
+                1) Look at the stack trace below - this is the stack trace of the parallel task in question.
+                2) Find out where this parallel task was created.
+                3) Change the code so that the ambient context is suppressed before the parallel task is created. You can do this with IDbContextScopeFactory.HideContext() (wrap the parallel task creation code block in this).
 
-                 {Environment.StackTrace}
-                 """);
+                {Environment.StackTrace}
+                """);
 
         SetAmbientScope(_parentScope);
 
