@@ -185,8 +185,12 @@ public sealed class DbContextScope : IDbContextScope
         if (dbContextScopeInstances.TryGetValue(instanceIdentifier, out var ambientScope))
             return ambientScope;
 
-        throw new InvalidOperationException("Found a reference to an ambient DbContextScope in the control flow " +
-                                            "but no instance in the DbContextScopeInstances table:\r\n\r\n" +
-                                            $"{Environment.StackTrace}");
+        throw new InvalidOperationException(
+            $"""
+            Found a reference to an ambient DbContextScope in the control flow
+            but no instance in the DbContextScopeInstances collection:
+
+            {Environment.StackTrace}
+            """);
     }
 }

@@ -67,10 +67,7 @@ public sealed class DbContextCollection
         ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextCollection));
 
         if (_completed)
-            throw new InvalidOperationException(
-                "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
-
-        ExceptionDispatchInfo? lastError = null;
+            throw new InvalidOperationException("You cannot call Commit() more than once on a DbContextCollection.");
 
         var changeCount = 0;
 
@@ -88,14 +85,12 @@ public sealed class DbContextCollection
             }
             catch (Exception e)
             {
-                lastError = ExceptionDispatchInfo.Capture(e);
+                _logger.LogError(e, "Error saving changes to {DbContext}", dbContext.GetType().Name);
             }
 
         _transactions.Clear();
 
         _completed = true;
-
-        lastError?.Throw();
 
         return changeCount;
     }
@@ -105,10 +100,7 @@ public sealed class DbContextCollection
         ObjectDisposedException.ThrowIf(_disposed, nameof(DbContextCollection));
 
         if (_completed)
-            throw new InvalidOperationException(
-                "You can't call Commit() or Rollback() more than once on a DbContextCollection. All the changes in the DbContext instances managed by this collection have already been saved or rollback and all database transactions have been completed and closed. If you wish to make more data changes, create a new DbContextCollection and make your changes there.");
-
-        ExceptionDispatchInfo? lastError = null;
+            throw new InvalidOperationException("You cannot call Commit() more than once on a DbContextCollection.");
 
         var changeCount = 0;
 
@@ -127,14 +119,12 @@ public sealed class DbContextCollection
             }
             catch (Exception e)
             {
-                lastError = ExceptionDispatchInfo.Capture(e);
+                _logger.LogError(e, "Error saving changes to {DbContext}", dbContext.GetType().Name);
             }
 
         _transactions.Clear();
 
         _completed = true;
-
-        lastError?.Throw();
 
         return changeCount;
     }
@@ -196,7 +186,7 @@ public sealed class DbContextCollection
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error disposing DbContext");
+                _logger.LogError(e, "Error disposing {DbContext}", dbContext.GetType().Name);
             }
 
         _initializedDbContexts.Clear();
