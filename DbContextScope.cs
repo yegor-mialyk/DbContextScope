@@ -46,7 +46,7 @@ public sealed class DbContextScope : IDbContextScope
         }
 
         if (_parentScope is not null && joiningOption == DbContextScopeOption.JoinExisting &&
-            (!_parentScope._readOnly || _readOnly))
+            _parentScope._readOnly == _readOnly)
         {
             _logger.LogDebug("Join existing DbContext scope");
 

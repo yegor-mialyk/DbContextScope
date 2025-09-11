@@ -69,28 +69,37 @@ public sealed class DbContextCollection
         if (_completed)
             throw new InvalidOperationException("You cannot call Commit() more than once on a DbContextCollection.");
 
+        ExceptionDispatchInfo? lastError = null;
+
         var changeCount = 0;
 
         foreach (var dbContext in _initializedDbContexts.Values)
             try
             {
-                if (!_readOnly)
-                    changeCount += dbContext.SaveChanges();
+                if (_readOnly)
+                    continue;
+
+                changeCount += dbContext.SaveChanges();
 
                 if (!_transactions.TryGetValue(dbContext, out var transaction))
                     continue;
 
                 transaction.Commit();
                 transaction.Dispose();
+
+                _transactions.Remove(dbContext);
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Error saving changes to {DbContext}", dbContext.GetType().Name);
+
+                lastError = ExceptionDispatchInfo.Capture(e);
             }
 
-        _transactions.Clear();
-
-        _completed = true;
+        if (lastError is not null)
+            lastError.Throw();
+        else
+            _completed = true;
 
         return changeCount;
     }
@@ -102,13 +111,17 @@ public sealed class DbContextCollection
         if (_completed)
             throw new InvalidOperationException("You cannot call Commit() more than once on a DbContextCollection.");
 
+        ExceptionDispatchInfo? lastError = null;
+
         var changeCount = 0;
 
         foreach (var dbContext in _initializedDbContexts.Values)
             try
             {
-                if (!_readOnly)
-                    changeCount += await dbContext.SaveChangesAsync(cancelToken).ConfigureAwait(false);
+                if (_readOnly)
+                    continue;
+
+                changeCount += await dbContext.SaveChangesAsync(cancelToken).ConfigureAwait(false);
 
                 if (!_transactions.TryGetValue(dbContext, out var transaction))
                     continue;
@@ -116,15 +129,20 @@ public sealed class DbContextCollection
                 await transaction.CommitAsync(cancelToken).ConfigureAwait(false);
 
                 transaction.Dispose();
+
+                _transactions.Remove(dbContext);
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Error saving changes to {DbContext}", dbContext.GetType().Name);
+
+                lastError = ExceptionDispatchInfo.Capture(e);
             }
 
-        _transactions.Clear();
-
-        _completed = true;
+        if (lastError is not null)
+            lastError.Throw();
+        else
+            _completed = true;
 
         return changeCount;
     }
@@ -146,19 +164,22 @@ public sealed class DbContextCollection
 
             try
             {
-                transaction.Rollback();
                 transaction.Dispose();
+
+                _transactions.Remove(dbContext);
             }
             catch (Exception e)
             {
+                _logger.LogError(e, "Error rolling back transaction for {DbContext}", dbContext.GetType().Name);
+
                 lastError = ExceptionDispatchInfo.Capture(e);
             }
         }
 
-        _transactions.Clear();
-        _completed = true;
-
-        lastError?.Throw();
+        if (lastError is not null)
+            lastError.Throw();
+        else
+            _completed = true;
     }
 
     public void DisposeCollection()
