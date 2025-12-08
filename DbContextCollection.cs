@@ -52,6 +52,8 @@ public sealed class DbContextCollection
         _initializedDbContexts.Add(requestedType, dbContext);
 
         dbContext.ChangeTracker.AutoDetectChangesEnabled = !_readOnly;
+        dbContext.ChangeTracker.QueryTrackingBehavior =
+            _readOnly ? QueryTrackingBehavior.NoTracking : QueryTrackingBehavior.TrackAll;
 
         if (_isolationLevel == IsolationLevel.Unspecified)
             return dbContext;
@@ -190,10 +192,7 @@ public sealed class DbContextCollection
         if (!_completed)
             try
             {
-                if (_readOnly)
-                    Commit();
-                else
-                    Rollback();
+                Rollback();
             }
             catch (Exception e)
             {
