@@ -44,13 +44,13 @@ With `DbContextScope`, your typical service method would look like this:
 ```C#
 public void MarkUserAsPremium(Guid userId)
 {
-    using (var dbContextScope = _dbContextScopeFactory.Create())
-    {
-        var user = _userRepository.Get(userId);
-        user.IsPremiumUser = true;
+    using var dbContextScope = _dbContextScopeFactory.Create();
 
-        dbContextScope.SaveChanges();
-    }
+    var user = _userRepository.Get(userId);
+
+    user.IsPremiumUser = true;
+
+    dbContextScope.SaveChanges();
 }
 ```
 
@@ -87,13 +87,13 @@ A `DbContextScope` can of course be nested. Let's say that you already have a se
 ```C#
 public void MarkUserAsPremium(Guid userId)
 {
-    using (var dbContextScope = _dbContextScopeFactory.Create())
-    {
-        var user = _userRepository.Get(userId);
-        user.IsPremiumUser = true;
+    using var dbContextScope = _dbContextScopeFactory.Create();
 
-        dbContextScope.SaveChanges();
-    }
+    var user = _userRepository.Get(userId);
+
+    user.IsPremiumUser = true;
+
+    dbContextScope.SaveChanges();
 }
 ```
 
@@ -102,22 +102,21 @@ You're implementing a new feature that requires being able to mark a group of us
 ```C#
 public void MarkGroupOfUsersAsPremium(IEnumerable<Guid> userIds)
 {
-    using (var dbContextScope = _dbContextScopeFactory.Create())
-    {
-        foreach (var userId in userIds)
-        {
-            // The child scope created by MarkUserAsPremium() will
-            // join our scope. So it will re-use our DbContext instance(s)
-            // and the call to SaveChanges() made in the child scope will
-            // have no effect.
-            MarkUserAsPremium(userId);
-        }
+    using var dbContextScope = _dbContextScopeFactory.Create();
 
-        // Changes will only be saved here, in the top-level scope,
-        // ensuring that all the changes are either committed or
-        // rolled-back atomically.
-        dbContextScope.SaveChanges();
+    foreach (var userId in userIds)
+    {
+        // The child scope created by MarkUserAsPremium() will
+        // join our scope. So it will re-use our DbContext instance(s)
+        // and the call to SaveChanges() made in the child scope will
+        // have no effect.
+        MarkUserAsPremium(userId);
     }
+
+    // Changes will only be saved here, in the top-level scope,
+    // ensuring that all the changes are either committed or
+    // rolled-back atomically.
+    dbContextScope.SaveChanges();
 }
 ```
 
@@ -132,10 +131,9 @@ Read-only scopes optimize performance by disabling change tracking. Use them whe
 ```C#
 public int NumberPremiumUsers()
 {
-    using (_dbContextScopeFactory.CreateReadOnly())
-    {
-        return _userRepository.GetNumberOfPremiumUsers();
-    }
+    using var dbContextScope = _dbContextScopeFactory.CreateReadOnly();
+
+    return _userRepository.GetNumberOfPremiumUsers();
 }
 ```
 
@@ -146,15 +144,14 @@ public int NumberPremiumUsers()
 ```C#
 public async Task RandomServiceMethodAsync(Guid userId)
 {
-    using (var dbContextScope = _dbContextScopeFactory.Create())
-    {
-        var user = await _userRepository.GetAsync(userId);
-        var orders = await _orderRepository.GetOrdersForUserAsync(userId);
+    using var dbContextScope = _dbContextScopeFactory.Create();
 
-        [...]
+    var user = await _userRepository.GetAsync(userId);
+    var orders = await _orderRepository.GetOrdersForUserAsync(userId);
 
-        await dbContextScope.SaveChangesAsync();
-    }
+    //...
+
+    await dbContextScope.SaveChangesAsync();
 }
 ```
 
@@ -173,26 +170,27 @@ However, if you really need to start a parallel task within a `DbContextScope` (
 ```C#
 public void RandomServiceMethod()
 {
-    using (var dbContextScope = _dbContextScopeFactory.Create())
+    using var dbContextScope = _dbContextScopeFactory.Create();
+    // Do some work that uses the ambient context
+
+    //...
+
+    using (_dbContextScopeFactory.HideContext())
     {
-        // Do some work that uses the ambient context
-        [...]
+        // Kick off parallel tasks that shouldn't be using the
+        // ambient context here. E.g. create new threads,
+        // enqueue work items on the ThreadPool or create
+        // TPL Tasks.
 
-        using (_dbContextScopeFactory.HideContext())
-        {
-            // Kick off parallel tasks that shouldn't be using the
-            // ambient context here. E.g. create new threads,
-            // enqueue work items on the ThreadPool or create
-            // TPL Tasks.
-            [...]
-        }
-
-        // The ambient context is available again here.
-        // Can keep doing more work as usual.
-        [...]
-
-        dbContextScope.SaveChanges();
+        //...
     }
+
+    // The ambient context is available again here.
+    // Can keep doing more work as usual.
+
+    //...
+
+    dbContextScope.SaveChanges();
 }
 ```
 
@@ -210,27 +208,26 @@ In that case, you can pass a value of `DbContextScopeOption.ForceCreateNew` as t
 ```C#
 public void RandomServiceMethod()
 {
-    using (var dbContextScope = _dbContextScopeFactory.Create(DbContextScopeOption.ForceCreateNew))
-    {
-        // We've created a new scope. Even if that service method
-        // was called by another service method that has created its
-        // own DbContextScope, we won't be joining it.
-        // Our scope will create new DbContext instances and won't
-        // re-use the DbContext instances that the parent scope uses.
-        [...]
+    using var dbContextScope = _dbContextScopeFactory.Create(DbContextScopeOption.ForceCreateNew);
+    // We've created a new scope. Even if that service method
+    // was called by another service method that has created its
+    // own DbContextScope, we won't be joining it.
+    // Our scope will create new DbContext instances and won't
+    // re-use the DbContext instances that the parent scope uses.
 
-        // Since we've forced the creation of a new scope,
-        // this call to SaveChanges() will persist
-        // our changes regardless of whether or not the
-        // parent scope (if any) saves its changes or rolls back.
-        dbContextScope.SaveChanges();
-    }
+    //...
+
+    // Since we've forced the creation of a new scope,
+    // this call to SaveChanges() will persist
+    // our changes regardless of whether or not the
+    // parent scope (if any) saves its changes or rolls back.
+    dbContextScope.SaveChanges();
 }
 ```
 
 The major issue with doing this is that this service method will use separate `DbContext` instances than the ones used in the rest of that business transaction. Here are a few basic rules to always follow in that case in order to avoid weird bugs and maintenance nightmares:
 
-#### 1. Persistent entity returned by a service method must always be attached to the ambient context
+#### Persistent entity returned by a service method must always be attached to the ambient context
 
 If you force the creation of a new `DbContextScope` (and therefore of new `DbContext` instances) instead of joining the ambient one, your service method must **never** return persistent entities that were created / retrieved within that new scope. This would be completely unexpected and will lead to humongous complexity.
 
@@ -240,4 +237,3 @@ Instead, either:
 
 - Don't return persistent entities. This is the easiest, cleanest, most foolproof method. E.g. if your service creates a new domain model object, don't return it. Return its ID instead and let the client load the entity in its own `DbContext` instance if it needs the actual object.
 - If you absolutely need to return a persistent entity, switch back to the ambient context, load the entity you want to return in the ambient context and return that.
-
