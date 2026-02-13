@@ -4,21 +4,19 @@ A simple and flexible way to manage your Entity Framework Core DbContext instanc
 
 `DbContextScope` was created out of the need for a better way to manage DbContext instances in Entity Framework-based applications.
 
-The commonly advocated method of injecting DbContext instances works fine for single-threaded web applications where each web request implements exactly one business transaction. But it breaks down quite badly when console apps, Windows Services, parallelism and requests that need to implement multiple independent business transactions make their appearance.
+The commonly advocated method of injecting DbContext instances works fine for single-threaded web applications where each web request implements exactly one business transaction. But it breaks down quite badly when console apps, background services, parallelism, and requests that need to implement multiple independent business transactions make their appearance.
 
 The alternative of manually instantiating DbContext instances and manually passing them around as method parameters is (speaking from experience) more than cumbersome.
 
 `DbContextScope` implements the ambient context pattern for DbContext instances. It's something that NHibernate users or anyone who has used the `TransactionScope` class to manage ambient database transactions will be familiar with.
 
-It doesn't force any particular design pattern or application architecture to be used. It works beautifully with dependency injection. And it works beautifully without. It of course works perfectly with async execution flows, including with the new async / await support introduced in .NET 4.5 and EF6.
+It doesn't force any particular design pattern or application architecture to be used. It works beautifully with dependency injection, and it works beautifully without. It works perfectly with async execution flows, leveraging modern .NET async/await patterns.
 
-And most importantly, at the time of writing, `DbContextScope` has been battle-tested in a large-scale application for over two months and has performed without a hitch.
+`DbContextScope` has been battle-tested in production applications and provides a robust solution for DbContext lifecycle management.
 
 ## Using DbContextScope
 
-The repo contains a demo application that demonstrates the most common (and a few more advanced) use-cases.
-
-I would highly recommend reading the following blog post first. It examines in great details the most commonly used approaches to manage DbContext instances and explains how `DbContextScope` addresses their shortcomings and simplifies DbContext management: [Managing DbContext the right way with Entity Framework 6: an in-depth guide](http://mehdi.me/ambient-dbcontext-in-ef6/).
+For background on the design philosophy and patterns, you may find it helpful to read: [Managing DbContext the right way with Entity Framework 6: an in-depth guide](http://mehdi.me/ambient-dbcontext-in-ef6/). While the blog post references EF6, the core concepts and patterns apply equally to Entity Framework Core.
 
 ### Overview
 
@@ -66,14 +64,14 @@ public class UserRepository : IUserRepository
     public UserRepository(IAmbientDbContextLocator contextLocator)
     {
         if (contextLocator is null)
-            throw new ArgumentNullException("contextLocator");
+            throw new ArgumentNullException(nameof(contextLocator));
 
         _contextLocator = contextLocator;
     }
 
     public User Get(Guid userId)
     {
-        return _contextLocator.Get<MyDbContext>.Set<User>().Find(userId);
+        return _contextLocator.Get<MyDbContext>().Set<User>().Find(userId);
     }
 }
 ```
@@ -129,7 +127,7 @@ This makes creating a service method that combines the logic of multiple other s
 
 ### Read-only scopes
 
-This is how you use it:
+Read-only scopes optimize performance by disabling change tracking. Use them when you only need to query data:
 
 ```C#
 public int NumberPremiumUsers()
@@ -162,15 +160,15 @@ public async Task RandomServiceMethodAsync(Guid userId)
 
 In the example above, the `OrderRepository.GetOrdersForUserAsync()` method will be able to see and access the ambient DbContext instance despite the fact that it's being called in a separate thread than the one where the `DbContextScope` was initially created.
 
-This is made possible by the fact that `DbContextScope` stores itself in the CallContext. The CallContext automatically flows through async points. If you're curious about how it all works behind the scenes, Stephen Toub has written [an excellent blog post about it](http://blogs.msdn.com/b/pfxteam/archive/2012/06/15/executioncontext-vs-synchronizationcontext.aspx). But if all you want to do is use `DbContextScope`, you just have to know that: it just works.
+This is made possible by the fact that `DbContextScope` uses `AsyncLocal<T>`, which automatically flows through async points while maintaining thread safety. If you're curious about how async context flows work behind the scenes, Stephen Toub has written [an excellent blog post about it](http://blogs.msdn.com/b/pfxteam/archive/2012/06/15/executioncontext-vs-synchronizationcontext.aspx). But if all you want to do is use `DbContextScope`, you just have to know that: it just works.
 
 **WARNING**: There is one thing that you *must* always keep in mind when using any async flow with `DbContextScope`. Just like `TransactionScope`, `DbContextScope` only supports being used within a single logical flow of execution.
 
-I.e. if you attempt to start multiple parallel tasks within the context of a `DbContextScope` (e.g. by creating multiple threads or multiple TPL `Task`), you will get into big trouble. This is because the ambient `DbContextScope` will flow through all the threads your parallel tasks are using. If code in these threads need to use the database, they will all use the same ambient `DbContext` instance, resulting the same the `DbContext` instance being used from multiple threads simultaneously.
+I.e. if you attempt to start multiple parallel tasks within the context of a `DbContextScope` (e.g. by creating multiple threads or multiple TPL `Task` instances), you will get into big trouble. This is because the ambient `DbContextScope` will flow through all the threads your parallel tasks are using. If code in these threads needs to use the database, they will all use the same ambient `DbContext` instance, resulting in the same `DbContext` instance being used from multiple threads simultaneously.
 
 In general, parallelizing database access within a single business transaction has little to no benefits and only adds significant complexity. Any parallel operation performed within the context of a business transaction should not access the database.
 
-However, if you really need to start a parallel task within a `DbContextScope` (e.g. to perform some out-of-band background processing independently from the outcome of the business transaction), then you **must** suppress the ambient context before starting the parallel task. Which you can easily do like this:
+However, if you really need to start a parallel task within a `DbContextScope` (e.g. to perform some out-of-band background processing independently from the outcome of the business transaction), then you **must** suppress the ambient context before starting the parallel task by calling `HideContext()`:
 
 ```C#
 public void RandomServiceMethod()
@@ -200,12 +198,12 @@ public void RandomServiceMethod()
 
 ### Creating a non-nested DbContextScope
 
-This is an advanced feature that I would expect most applications to never need. Tread carefully when using this as it can create tricky issues and quickly lead to a maintenance nightmare.
+This is an advanced feature that most applications will never need. Use this carefully as it can create subtle issues and quickly lead to maintenance problems.
 
-Sometimes, a service method may need to persist its changes to the underlying database regardless of the outcome of overall business transaction it may be part of. This would be the case if:
+Sometimes, a service method may need to persist its changes to the underlying database regardless of the outcome of the overall business transaction it may be part of. This would be the case if:
 
-- It needs to record cross-cutting concern information that shouldn't be rolled-back even if the business transaction fails. A typical example would be logging or auditing records.
-- It needs to record the result of an operation that cannot be rolled back. A typical example would be service methods that interact with non-transactional remote services or APIs. E.g. if your service method uses the Facebook API to post a new status update on Facebook and then records the newly created status update in the local database, that record must be persisted even if the overall business transaction fails because of some other error occurring after the Facebook API call. The Facebook API isn't transactional - it's impossible to "rollback" a Facebook API call. The result of that API call should therefore never be rolled back.
+- It needs to record cross-cutting concern information that shouldn't be rolled back even if the business transaction fails. Typical examples include logging or auditing records.
+- It needs to record the result of an operation that cannot be rolled back. A typical example would be service methods that interact with non-transactional remote services or APIs. For instance, if your service method calls an external API to create a resource and then records the result in your local database, that record must be persisted even if the overall business transaction fails due to some other error. External APIs aren't transactional—you cannot roll back the external side effect. The result of that API call should therefore never be rolled back.
 
 In that case, you can pass a value of `DbContextScopeOption.ForceCreateNew` as the `joiningOption` parameter when creating a new `DbContextScope`. This will create a `DbContextScope` that will not join the ambient scope even if one exists:
 
