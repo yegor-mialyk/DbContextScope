@@ -196,7 +196,7 @@ public sealed class DbContextCollection
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error commiting/rolling back DbContextCollection");
+                _logger.LogError(e, "Error committing/rolling back DbContextCollection");
             }
 
         foreach (var dbContext in _initializedDbContexts.Values)
